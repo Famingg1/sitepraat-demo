@@ -7,10 +7,36 @@ name: Template e2e (Sitepraat)
 permissions:
   contents: read
 jobs:
-  e2e:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Controleer de buildoutput
+        run: |
+          test -f "$BUILD_OUTPUT/index.html" || { echo "::error::$BUILD_OUTPUT/index.html ontbreekt; klopt BUILD_OUTPUT?"; exit 1; }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: site
+          path: ${{ env.BUILD_OUTPUT }}
+          include-hidden-files: true
+          retention-days: 3
+  e2e:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: site
+          path: out
       - name: Server opzetten
         run: |
 
@@ -25,7 +51,7 @@ jobs:
             if docker exec sshd sh -c 'command -v rsync && test -d /config' >/dev/null 2>&1 && ssh-keyscan -p 2222 127.0.0.1 >/dev/null 2>&1; then break; fi; sleep 2
           done
           docker exec sshd sh -c 'mkdir -p /config/site/www/.well-known && echo keep > /config/site/www/.htaccess && echo keep > /config/site/www/.well-known/token && echo oud > /config/site/www/oud.html && chown -R 1000:1000 /config/site'
-          mkdir -p out/sub && echo "<h1>nieuw</h1>" > out/index.html && echo b > out/sub/b.html
+          ls -la out
       - name: 'rsync: sleutel en key in env'
         run: echo "SSH_PRIVATE_KEY<<EOF" >> $GITHUB_ENV; cat "$RUNNER_TEMP/k" >> $GITHUB_ENV; echo "EOF" >> $GITHUB_ENV
       - name: 'rsync: upload (template)'
@@ -86,7 +112,9 @@ jobs:
 
           set -euo pipefail
           docker exec sshd sh -c 'cd /config/site/www && find . -type f | sort' | tee files.txt
-          grep -qx './index.html' files.txt && grep -qx './sub/b.html' files.txt || { echo "::error::rsync: nieuwe bestanden ontbreken"; exit 1; }
+          (cd out && find . -type f | sort) > expected.txt
+          grep -qx './index.html' files.txt && comm -23 expected.txt files.txt | grep -q . && { echo "::error::rsync: niet alles geupload"; exit 1; }
+          grep -qx './index.html' files.txt || { echo "::error::rsync: nieuwe bestanden ontbreken"; exit 1; }
           grep -qx './oud.html' files.txt && { echo "::error::rsync: oud bestand niet verwijderd"; exit 1; } || true
           grep -qx './.htaccess' files.txt && grep -qx './.well-known/token' files.txt || { echo "::error::rsync: beschermde bestanden weg"; exit 1; }
           echo "rsync: OK"
@@ -150,7 +178,9 @@ jobs:
 
           set -euo pipefail
           docker exec sshd sh -c 'cd /config/site/www && find . -type f | sort' | tee files.txt
-          grep -qx './index.html' files.txt && grep -qx './sub/b.html' files.txt || { echo "::error::rsync pin: nieuwe bestanden ontbreken"; exit 1; }
+          (cd out && find . -type f | sort) > expected.txt
+          grep -qx './index.html' files.txt && comm -23 expected.txt files.txt | grep -q . && { echo "::error::rsync pin: niet alles geupload"; exit 1; }
+          grep -qx './index.html' files.txt || { echo "::error::rsync pin: nieuwe bestanden ontbreken"; exit 1; }
           grep -qx './oud.html' files.txt && { echo "::error::rsync pin: oud bestand niet verwijderd"; exit 1; } || true
           grep -qx './.htaccess' files.txt && grep -qx './.well-known/token' files.txt || { echo "::error::rsync pin: beschermde bestanden weg"; exit 1; }
           echo "rsync pin: OK"
@@ -326,7 +356,9 @@ jobs:
 
           set -euo pipefail
           docker exec sshd sh -c 'cd /config/site/www && find . -type f | sort' | tee files.txt
-          grep -qx './index.html' files.txt && grep -qx './sub/b.html' files.txt || { echo "::error::na vangrails: nieuwe bestanden ontbreken"; exit 1; }
+          (cd out && find . -type f | sort) > expected.txt
+          grep -qx './index.html' files.txt && comm -23 expected.txt files.txt | grep -q . && { echo "::error::na vangrails: niet alles geupload"; exit 1; }
+          grep -qx './index.html' files.txt || { echo "::error::na vangrails: nieuwe bestanden ontbreken"; exit 1; }
           grep -qx './oud.html' files.txt && { echo "::error::na vangrails: oud bestand niet verwijderd"; exit 1; } || true
           grep -qx './.htaccess' files.txt && grep -qx './.well-known/token' files.txt || { echo "::error::na vangrails: beschermde bestanden weg"; exit 1; }
           echo "na vangrails: OK"
@@ -402,7 +434,9 @@ jobs:
 
           set -euo pipefail
           docker exec sshd sh -c 'cd /config/site/www && find . -type f | sort' | tee files.txt
-          grep -qx './index.html' files.txt && grep -qx './sub/b.html' files.txt || { echo "::error::sftp wachtwoord: nieuwe bestanden ontbreken"; exit 1; }
+          (cd out && find . -type f | sort) > expected.txt
+          grep -qx './index.html' files.txt && comm -23 expected.txt files.txt | grep -q . && { echo "::error::sftp wachtwoord: niet alles geupload"; exit 1; }
+          grep -qx './index.html' files.txt || { echo "::error::sftp wachtwoord: nieuwe bestanden ontbreken"; exit 1; }
           grep -qx './oud.html' files.txt && { echo "::error::sftp wachtwoord: oud bestand niet verwijderd"; exit 1; } || true
           grep -qx './.htaccess' files.txt && grep -qx './.well-known/token' files.txt || { echo "::error::sftp wachtwoord: beschermde bestanden weg"; exit 1; }
           echo "sftp wachtwoord: OK"
@@ -475,7 +509,9 @@ jobs:
 
           set -euo pipefail
           docker exec sshd sh -c 'cd /config/site/www && find . -type f | sort' | tee files.txt
-          grep -qx './index.html' files.txt && grep -qx './sub/b.html' files.txt || { echo "::error::sftp sleutel: nieuwe bestanden ontbreken"; exit 1; }
+          (cd out && find . -type f | sort) > expected.txt
+          grep -qx './index.html' files.txt && comm -23 expected.txt files.txt | grep -q . && { echo "::error::sftp sleutel: niet alles geupload"; exit 1; }
+          grep -qx './index.html' files.txt || { echo "::error::sftp sleutel: nieuwe bestanden ontbreken"; exit 1; }
           grep -qx './oud.html' files.txt && { echo "::error::sftp sleutel: oud bestand niet verwijderd"; exit 1; } || true
           grep -qx './.htaccess' files.txt && grep -qx './.well-known/token' files.txt || { echo "::error::sftp sleutel: beschermde bestanden weg"; exit 1; }
           echo "sftp sleutel: OK"
@@ -546,3 +582,8 @@ jobs:
           rm -f ~/.ssh/deploy_key
       - name: sftp vangrail gefaald
         run: '[ "${{ steps.ftpguard.outcome }}" = failure ] && echo "sftp vangrail OK"'
+env:
+  BUILD_OUTPUT: dist
+  ALLOW_RSYNC_PARTIAL: 'false'
+  PROTECT: .htaccess,.well-known/,cgi-bin/,.user.ini,stats/,logs/
+  SSH_EXTRA_OPTS: ''
