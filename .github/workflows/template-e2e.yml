@@ -1,0 +1,548 @@
+name: Template e2e (Sitepraat)
+'on':
+  push:
+    branches:
+      - template-e2e
+  workflow_dispatch: null
+permissions:
+  contents: read
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Server opzetten
+        run: |
+
+          set -euo pipefail
+          ssh-keygen -t ed25519 -N "" -f "$RUNNER_TEMP/k" -q
+          docker rm -f sshd >/dev/null 2>&1 || true
+          docker run -d --name sshd -p 2222:2222 \
+            -e PUID=1000 -e PGID=1000 -e USER_NAME=deploy -e PASSWORD_ACCESS=true -e USER_PASSWORD=testpass123 \
+            -e PUBLIC_KEY="$(cat "$RUNNER_TEMP/k.pub")" -e DOCKER_MODS=linuxserver/mods:openssh-server-rsync \
+            lscr.io/linuxserver/openssh-server:latest
+          for i in $(seq 1 90); do
+            if docker exec sshd sh -c 'command -v rsync && test -d /config' >/dev/null 2>&1 && ssh-keyscan -p 2222 127.0.0.1 >/dev/null 2>&1; then break; fi; sleep 2
+          done
+          docker exec sshd sh -c 'mkdir -p /config/site/www/.well-known && echo keep > /config/site/www/.htaccess && echo keep > /config/site/www/.well-known/token && echo oud > /config/site/www/oud.html && chown -R 1000:1000 /config/site'
+          mkdir -p out/sub && echo "<h1>nieuw</h1>" > out/index.html && echo b > out/sub/b.html
+      - name: 'rsync: sleutel en key in env'
+        run: echo "SSH_PRIVATE_KEY<<EOF" >> $GITHUB_ENV; cat "$RUNNER_TEMP/k" >> $GITHUB_ENV; echo "EOF" >> $GITHUB_ENV
+      - name: 'rsync: upload (template)'
+        env:
+          BUILD_OUTPUT: out
+          SSH_HOST: 127.0.0.1
+          SSH_USER: deploy
+          SSH_PORT: '2222'
+          SSH_KNOWN_HOSTS: ''
+          DEPLOY_PATH: /config/site/www/
+          ALLOW_RSYNC_PARTIAL: 'false'
+          PROTECT: .htaccess,.well-known/,cgi-bin/,.user.ini,stats/,logs/
+          SSH_EXTRA_OPTS: ''
+        run: |
+          set -euo pipefail
+          for v in SSH_PRIVATE_KEY SSH_HOST SSH_USER DEPLOY_PATH; do
+            [ -n "${!v}" ] || { echo "::error::Secret $v ontbreekt"; exit 1; }
+          done
+          # Vangrail: rsync --delete op een lege of te korte map zou de hele thuismap leegmaken.
+          case "$DEPLOY_PATH" in
+            /*/) ;;
+            *) echo "::error::DEPLOY_PATH moet absoluut zijn en op / eindigen (bv. /home/user/public_html/)"; exit 1 ;;
+          esac
+          if [ "$(echo "$DEPLOY_PATH" | tr -cd '/' | wc -c)" -lt 3 ]; then
+            echo "::error::DEPLOY_PATH '$DEPLOY_PATH' is te kort; wijs naar de webroot, niet naar / of de thuismap"; exit 1
+          fi
+          PORT="${SSH_PORT:-22}"
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            echo "::warning::SSH_KNOWN_HOSTS niet gezet; host key wordt ongecontroleerd opgehaald."
+            ssh-keyscan -p "$PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+
+          EXCLUDES=()
+          IFS=',' read -ra items <<< "$PROTECT"
+          for p in "${items[@]}"; do [ -n "$p" ] && EXCLUDES+=("--exclude=/$p"); done
+
+          set +e
+          # -rlpt in plaats van -a: geen eigenaar/groep zetten (kan niet op shared hosting).
+          rsync -rlptz --checksum --delete --chmod=D755,F644 "${EXCLUDES[@]}" \
+            -e "ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS" \
+            out/ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH"
+          code=$?
+          set -e
+          rm -f ~/.ssh/deploy_key
+          if [ "$code" -eq 23 ] && [ "$ALLOW_RSYNC_PARTIAL" = "true" ]; then
+            echo "::warning::rsync exitcode 23 (host bewerkt bestanden na upload); niet fataal."
+          elif [ "$code" -ne 0 ]; then
+            echo "::error::rsync faalde met exitcode $code"; exit "$code"
+          fi
+      - name: 'rsync: controle'
+        run: |
+
+          set -euo pipefail
+          docker exec sshd sh -c 'cd /config/site/www && find . -type f | sort' | tee files.txt
+          grep -qx './index.html' files.txt && grep -qx './sub/b.html' files.txt || { echo "::error::rsync: nieuwe bestanden ontbreken"; exit 1; }
+          grep -qx './oud.html' files.txt && { echo "::error::rsync: oud bestand niet verwijderd"; exit 1; } || true
+          grep -qx './.htaccess' files.txt && grep -qx './.well-known/token' files.txt || { echo "::error::rsync: beschermde bestanden weg"; exit 1; }
+          echo "rsync: OK"
+      - name: 'rsync: gepinde host key'
+        run: echo "PINNED<<EOF" >> $GITHUB_ENV; ssh-keyscan -p 2222 127.0.0.1 2>/dev/null >> $GITHUB_ENV; echo "EOF" >> $GITHUB_ENV
+      - name: 'rsync: upload met pin (template)'
+        env:
+          BUILD_OUTPUT: out
+          SSH_HOST: 127.0.0.1
+          SSH_USER: deploy
+          SSH_PORT: '2222'
+          SSH_KNOWN_HOSTS: ${{ env.PINNED }}
+          DEPLOY_PATH: /config/site/www/
+          ALLOW_RSYNC_PARTIAL: 'false'
+          PROTECT: .htaccess,.well-known/,cgi-bin/,.user.ini,stats/,logs/
+          SSH_EXTRA_OPTS: ''
+        run: |
+          set -euo pipefail
+          for v in SSH_PRIVATE_KEY SSH_HOST SSH_USER DEPLOY_PATH; do
+            [ -n "${!v}" ] || { echo "::error::Secret $v ontbreekt"; exit 1; }
+          done
+          # Vangrail: rsync --delete op een lege of te korte map zou de hele thuismap leegmaken.
+          case "$DEPLOY_PATH" in
+            /*/) ;;
+            *) echo "::error::DEPLOY_PATH moet absoluut zijn en op / eindigen (bv. /home/user/public_html/)"; exit 1 ;;
+          esac
+          if [ "$(echo "$DEPLOY_PATH" | tr -cd '/' | wc -c)" -lt 3 ]; then
+            echo "::error::DEPLOY_PATH '$DEPLOY_PATH' is te kort; wijs naar de webroot, niet naar / of de thuismap"; exit 1
+          fi
+          PORT="${SSH_PORT:-22}"
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            echo "::warning::SSH_KNOWN_HOSTS niet gezet; host key wordt ongecontroleerd opgehaald."
+            ssh-keyscan -p "$PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+
+          EXCLUDES=()
+          IFS=',' read -ra items <<< "$PROTECT"
+          for p in "${items[@]}"; do [ -n "$p" ] && EXCLUDES+=("--exclude=/$p"); done
+
+          set +e
+          # -rlpt in plaats van -a: geen eigenaar/groep zetten (kan niet op shared hosting).
+          rsync -rlptz --checksum --delete --chmod=D755,F644 "${EXCLUDES[@]}" \
+            -e "ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS" \
+            out/ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH"
+          code=$?
+          set -e
+          rm -f ~/.ssh/deploy_key
+          if [ "$code" -eq 23 ] && [ "$ALLOW_RSYNC_PARTIAL" = "true" ]; then
+            echo "::warning::rsync exitcode 23 (host bewerkt bestanden na upload); niet fataal."
+          elif [ "$code" -ne 0 ]; then
+            echo "::error::rsync faalde met exitcode $code"; exit "$code"
+          fi
+      - name: 'rsync: controle 2'
+        run: |
+
+          set -euo pipefail
+          docker exec sshd sh -c 'cd /config/site/www && find . -type f | sort' | tee files.txt
+          grep -qx './index.html' files.txt && grep -qx './sub/b.html' files.txt || { echo "::error::rsync pin: nieuwe bestanden ontbreken"; exit 1; }
+          grep -qx './oud.html' files.txt && { echo "::error::rsync pin: oud bestand niet verwijderd"; exit 1; } || true
+          grep -qx './.htaccess' files.txt && grep -qx './.well-known/token' files.txt || { echo "::error::rsync pin: beschermde bestanden weg"; exit 1; }
+          echo "rsync pin: OK"
+      - name: 'rsync: vangrail 1 (/config/) moet falen'
+        id: guard0
+        continue-on-error: true
+        env:
+          BUILD_OUTPUT: out
+          SSH_HOST: 127.0.0.1
+          SSH_USER: deploy
+          SSH_PORT: '2222'
+          SSH_KNOWN_HOSTS: ''
+          DEPLOY_PATH: /config/
+          ALLOW_RSYNC_PARTIAL: 'false'
+          PROTECT: .htaccess,.well-known/,cgi-bin/,.user.ini,stats/,logs/
+          SSH_EXTRA_OPTS: ''
+        run: |
+          set -euo pipefail
+          for v in SSH_PRIVATE_KEY SSH_HOST SSH_USER DEPLOY_PATH; do
+            [ -n "${!v}" ] || { echo "::error::Secret $v ontbreekt"; exit 1; }
+          done
+          # Vangrail: rsync --delete op een lege of te korte map zou de hele thuismap leegmaken.
+          case "$DEPLOY_PATH" in
+            /*/) ;;
+            *) echo "::error::DEPLOY_PATH moet absoluut zijn en op / eindigen (bv. /home/user/public_html/)"; exit 1 ;;
+          esac
+          if [ "$(echo "$DEPLOY_PATH" | tr -cd '/' | wc -c)" -lt 3 ]; then
+            echo "::error::DEPLOY_PATH '$DEPLOY_PATH' is te kort; wijs naar de webroot, niet naar / of de thuismap"; exit 1
+          fi
+          PORT="${SSH_PORT:-22}"
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            echo "::warning::SSH_KNOWN_HOSTS niet gezet; host key wordt ongecontroleerd opgehaald."
+            ssh-keyscan -p "$PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+
+          EXCLUDES=()
+          IFS=',' read -ra items <<< "$PROTECT"
+          for p in "${items[@]}"; do [ -n "$p" ] && EXCLUDES+=("--exclude=/$p"); done
+
+          set +e
+          # -rlpt in plaats van -a: geen eigenaar/groep zetten (kan niet op shared hosting).
+          rsync -rlptz --checksum --delete --chmod=D755,F644 "${EXCLUDES[@]}" \
+            -e "ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS" \
+            out/ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH"
+          code=$?
+          set -e
+          rm -f ~/.ssh/deploy_key
+          if [ "$code" -eq 23 ] && [ "$ALLOW_RSYNC_PARTIAL" = "true" ]; then
+            echo "::warning::rsync exitcode 23 (host bewerkt bestanden na upload); niet fataal."
+          elif [ "$code" -ne 0 ]; then
+            echo "::error::rsync faalde met exitcode $code"; exit "$code"
+          fi
+      - name: 'rsync: vangrail 2 (leeg) moet falen'
+        id: guard1
+        continue-on-error: true
+        env:
+          BUILD_OUTPUT: out
+          SSH_HOST: 127.0.0.1
+          SSH_USER: deploy
+          SSH_PORT: '2222'
+          SSH_KNOWN_HOSTS: ''
+          DEPLOY_PATH: ''
+          ALLOW_RSYNC_PARTIAL: 'false'
+          PROTECT: .htaccess,.well-known/,cgi-bin/,.user.ini,stats/,logs/
+          SSH_EXTRA_OPTS: ''
+        run: |
+          set -euo pipefail
+          for v in SSH_PRIVATE_KEY SSH_HOST SSH_USER DEPLOY_PATH; do
+            [ -n "${!v}" ] || { echo "::error::Secret $v ontbreekt"; exit 1; }
+          done
+          # Vangrail: rsync --delete op een lege of te korte map zou de hele thuismap leegmaken.
+          case "$DEPLOY_PATH" in
+            /*/) ;;
+            *) echo "::error::DEPLOY_PATH moet absoluut zijn en op / eindigen (bv. /home/user/public_html/)"; exit 1 ;;
+          esac
+          if [ "$(echo "$DEPLOY_PATH" | tr -cd '/' | wc -c)" -lt 3 ]; then
+            echo "::error::DEPLOY_PATH '$DEPLOY_PATH' is te kort; wijs naar de webroot, niet naar / of de thuismap"; exit 1
+          fi
+          PORT="${SSH_PORT:-22}"
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            echo "::warning::SSH_KNOWN_HOSTS niet gezet; host key wordt ongecontroleerd opgehaald."
+            ssh-keyscan -p "$PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+
+          EXCLUDES=()
+          IFS=',' read -ra items <<< "$PROTECT"
+          for p in "${items[@]}"; do [ -n "$p" ] && EXCLUDES+=("--exclude=/$p"); done
+
+          set +e
+          # -rlpt in plaats van -a: geen eigenaar/groep zetten (kan niet op shared hosting).
+          rsync -rlptz --checksum --delete --chmod=D755,F644 "${EXCLUDES[@]}" \
+            -e "ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS" \
+            out/ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH"
+          code=$?
+          set -e
+          rm -f ~/.ssh/deploy_key
+          if [ "$code" -eq 23 ] && [ "$ALLOW_RSYNC_PARTIAL" = "true" ]; then
+            echo "::warning::rsync exitcode 23 (host bewerkt bestanden na upload); niet fataal."
+          elif [ "$code" -ne 0 ]; then
+            echo "::error::rsync faalde met exitcode $code"; exit "$code"
+          fi
+      - name: 'rsync: vangrail 3 (config/site/www) moet falen'
+        id: guard2
+        continue-on-error: true
+        env:
+          BUILD_OUTPUT: out
+          SSH_HOST: 127.0.0.1
+          SSH_USER: deploy
+          SSH_PORT: '2222'
+          SSH_KNOWN_HOSTS: ''
+          DEPLOY_PATH: config/site/www
+          ALLOW_RSYNC_PARTIAL: 'false'
+          PROTECT: .htaccess,.well-known/,cgi-bin/,.user.ini,stats/,logs/
+          SSH_EXTRA_OPTS: ''
+        run: |
+          set -euo pipefail
+          for v in SSH_PRIVATE_KEY SSH_HOST SSH_USER DEPLOY_PATH; do
+            [ -n "${!v}" ] || { echo "::error::Secret $v ontbreekt"; exit 1; }
+          done
+          # Vangrail: rsync --delete op een lege of te korte map zou de hele thuismap leegmaken.
+          case "$DEPLOY_PATH" in
+            /*/) ;;
+            *) echo "::error::DEPLOY_PATH moet absoluut zijn en op / eindigen (bv. /home/user/public_html/)"; exit 1 ;;
+          esac
+          if [ "$(echo "$DEPLOY_PATH" | tr -cd '/' | wc -c)" -lt 3 ]; then
+            echo "::error::DEPLOY_PATH '$DEPLOY_PATH' is te kort; wijs naar de webroot, niet naar / of de thuismap"; exit 1
+          fi
+          PORT="${SSH_PORT:-22}"
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            echo "::warning::SSH_KNOWN_HOSTS niet gezet; host key wordt ongecontroleerd opgehaald."
+            ssh-keyscan -p "$PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+
+          EXCLUDES=()
+          IFS=',' read -ra items <<< "$PROTECT"
+          for p in "${items[@]}"; do [ -n "$p" ] && EXCLUDES+=("--exclude=/$p"); done
+
+          set +e
+          # -rlpt in plaats van -a: geen eigenaar/groep zetten (kan niet op shared hosting).
+          rsync -rlptz --checksum --delete --chmod=D755,F644 "${EXCLUDES[@]}" \
+            -e "ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS" \
+            out/ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH"
+          code=$?
+          set -e
+          rm -f ~/.ssh/deploy_key
+          if [ "$code" -eq 23 ] && [ "$ALLOW_RSYNC_PARTIAL" = "true" ]; then
+            echo "::warning::rsync exitcode 23 (host bewerkt bestanden na upload); niet fataal."
+          elif [ "$code" -ne 0 ]; then
+            echo "::error::rsync faalde met exitcode $code"; exit "$code"
+          fi
+      - name: vangrails moeten gefaald hebben
+        run: '[ "${{ steps.guard0.outcome }}" = failure ] && [ "${{ steps.guard1.outcome }}" = failure ] && [ "${{ steps.guard2.outcome }}" = failure ] && echo "vangrails OK"'
+      - name: na vangrails staat alles er nog
+        run: |
+
+          set -euo pipefail
+          docker exec sshd sh -c 'cd /config/site/www && find . -type f | sort' | tee files.txt
+          grep -qx './index.html' files.txt && grep -qx './sub/b.html' files.txt || { echo "::error::na vangrails: nieuwe bestanden ontbreken"; exit 1; }
+          grep -qx './oud.html' files.txt && { echo "::error::na vangrails: oud bestand niet verwijderd"; exit 1; } || true
+          grep -qx './.htaccess' files.txt && grep -qx './.well-known/token' files.txt || { echo "::error::na vangrails: beschermde bestanden weg"; exit 1; }
+          echo "na vangrails: OK"
+      - name: server terugzetten
+        run: docker exec sshd sh -c 'echo oud > /config/site/www/oud.html && rm -f /config/site/www/index.html && chown -R 1000:1000 /config/site'
+      - name: lftp installeren
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+      - name: sftp wachtwoord (template)
+        env:
+          BUILD_OUTPUT: out
+          PROTOCOL: sftp
+          PROTECT: .htaccess,.well-known/,cgi-bin/,.user.ini,stats/,logs/
+          FTP_SERVER: 127.0.0.1
+          FTP_USERNAME: deploy
+          LFTP_PASSWORD: testpass123
+          FTP_DIR: /config/site/www/
+          FTP_PORT: '2222'
+          SSH_PRIVATE_KEY: ''
+          SSH_KNOWN_HOSTS: ''
+        run: |
+          set -euo pipefail
+          for v in FTP_SERVER FTP_USERNAME FTP_DIR; do
+            [ -n "${!v}" ] || { echo "::error::Secret $v ontbreekt"; exit 1; }
+          done
+          # Vangrail: mirror --delete op een lege of te korte map zou alles op de server weggooien.
+          case "$FTP_DIR" in
+            /*/) ;;
+            *) echo "::error::FTP_DIR moet absoluut zijn en op / eindigen (bv. /www/)"; exit 1 ;;
+          esac
+          [ "$FTP_DIR" != "/" ] || { echo "::error::FTP_DIR mag niet / zijn; wijs naar de webroot"; exit 1; }
+
+          SETTINGS="set net:max-retries 3; set net:timeout 30; set cmd:fail-exit yes;"
+          case "$PROTOCOL" in
+            sftp)
+              PORT="${FTP_PORT:-22}"
+              install -m 700 -d ~/.ssh
+              if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
+                printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+              else
+                echo "::warning::SSH_KNOWN_HOSTS niet gezet; host key wordt ongecontroleerd opgehaald."
+                ssh-keyscan -p "$PORT" -H "$FTP_SERVER" > ~/.ssh/known_hosts 2>/dev/null
+              fi
+              SSH_CMD="ssh -a -x -o StrictHostKeyChecking=yes"
+              if [ -n "${SSH_PRIVATE_KEY:-}" ]; then
+                printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+                SSH_CMD="$SSH_CMD -i $HOME/.ssh/deploy_key"
+                LFTP_PASSWORD="${LFTP_PASSWORD:-x}"
+              fi
+              SETTINGS="$SETTINGS set sftp:connect-program \"$SSH_CMD\";"
+              ;;
+            ftps)
+              PORT="${FTP_PORT:-21}"
+              SETTINGS="$SETTINGS set ftp:ssl-force true; set ftp:ssl-protect-data true; set ssl:verify-certificate yes;"
+              ;;
+            ftp)
+              PORT="${FTP_PORT:-21}"
+              echo "::warning::Onversleutelde FTP: wachtwoord en bestanden gaan leesbaar over het internet. Gebruik sftp of ftps waar het kan."
+              SETTINGS="$SETTINGS set ftp:ssl-allow false;"
+              ;;
+            *) echo "::error::PROTOCOL moet sftp, ftps of ftp zijn"; exit 1 ;;
+          esac
+
+          EXCLUDES=""
+          IFS=',' read -ra items <<< "$PROTECT"
+          for p in "${items[@]}"; do [ -n "$p" ] && EXCLUDES="$EXCLUDES --exclude-glob $p"; done
+
+          export LFTP_PASSWORD
+          lftp -p "$PORT" -u "$FTP_USERNAME" --env-password "$PROTOCOL://$FTP_SERVER" \
+            -e "$SETTINGS mirror --reverse --delete --verbose --parallel=4 $EXCLUDES out/ $FTP_DIR; bye"
+          rm -f ~/.ssh/deploy_key
+      - name: 'sftp wachtwoord: controle'
+        run: |
+
+          set -euo pipefail
+          docker exec sshd sh -c 'cd /config/site/www && find . -type f | sort' | tee files.txt
+          grep -qx './index.html' files.txt && grep -qx './sub/b.html' files.txt || { echo "::error::sftp wachtwoord: nieuwe bestanden ontbreken"; exit 1; }
+          grep -qx './oud.html' files.txt && { echo "::error::sftp wachtwoord: oud bestand niet verwijderd"; exit 1; } || true
+          grep -qx './.htaccess' files.txt && grep -qx './.well-known/token' files.txt || { echo "::error::sftp wachtwoord: beschermde bestanden weg"; exit 1; }
+          echo "sftp wachtwoord: OK"
+      - name: server terugzetten 2
+        run: docker exec sshd sh -c 'echo oud > /config/site/www/oud.html && rm -f /config/site/www/index.html && chown -R 1000:1000 /config/site'
+      - name: sftp sleutel (template)
+        env:
+          BUILD_OUTPUT: out
+          PROTOCOL: sftp
+          PROTECT: .htaccess,.well-known/,cgi-bin/,.user.ini,stats/,logs/
+          FTP_SERVER: 127.0.0.1
+          FTP_USERNAME: deploy
+          LFTP_PASSWORD: ''
+          FTP_DIR: /config/site/www/
+          FTP_PORT: '2222'
+          SSH_KNOWN_HOSTS: ${{ env.PINNED }}
+        run: |
+          set -euo pipefail
+          for v in FTP_SERVER FTP_USERNAME FTP_DIR; do
+            [ -n "${!v}" ] || { echo "::error::Secret $v ontbreekt"; exit 1; }
+          done
+          # Vangrail: mirror --delete op een lege of te korte map zou alles op de server weggooien.
+          case "$FTP_DIR" in
+            /*/) ;;
+            *) echo "::error::FTP_DIR moet absoluut zijn en op / eindigen (bv. /www/)"; exit 1 ;;
+          esac
+          [ "$FTP_DIR" != "/" ] || { echo "::error::FTP_DIR mag niet / zijn; wijs naar de webroot"; exit 1; }
+
+          SETTINGS="set net:max-retries 3; set net:timeout 30; set cmd:fail-exit yes;"
+          case "$PROTOCOL" in
+            sftp)
+              PORT="${FTP_PORT:-22}"
+              install -m 700 -d ~/.ssh
+              if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
+                printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+              else
+                echo "::warning::SSH_KNOWN_HOSTS niet gezet; host key wordt ongecontroleerd opgehaald."
+                ssh-keyscan -p "$PORT" -H "$FTP_SERVER" > ~/.ssh/known_hosts 2>/dev/null
+              fi
+              SSH_CMD="ssh -a -x -o StrictHostKeyChecking=yes"
+              if [ -n "${SSH_PRIVATE_KEY:-}" ]; then
+                printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+                SSH_CMD="$SSH_CMD -i $HOME/.ssh/deploy_key"
+                LFTP_PASSWORD="${LFTP_PASSWORD:-x}"
+              fi
+              SETTINGS="$SETTINGS set sftp:connect-program \"$SSH_CMD\";"
+              ;;
+            ftps)
+              PORT="${FTP_PORT:-21}"
+              SETTINGS="$SETTINGS set ftp:ssl-force true; set ftp:ssl-protect-data true; set ssl:verify-certificate yes;"
+              ;;
+            ftp)
+              PORT="${FTP_PORT:-21}"
+              echo "::warning::Onversleutelde FTP: wachtwoord en bestanden gaan leesbaar over het internet. Gebruik sftp of ftps waar het kan."
+              SETTINGS="$SETTINGS set ftp:ssl-allow false;"
+              ;;
+            *) echo "::error::PROTOCOL moet sftp, ftps of ftp zijn"; exit 1 ;;
+          esac
+
+          EXCLUDES=""
+          IFS=',' read -ra items <<< "$PROTECT"
+          for p in "${items[@]}"; do [ -n "$p" ] && EXCLUDES="$EXCLUDES --exclude-glob $p"; done
+
+          export LFTP_PASSWORD
+          lftp -p "$PORT" -u "$FTP_USERNAME" --env-password "$PROTOCOL://$FTP_SERVER" \
+            -e "$SETTINGS mirror --reverse --delete --verbose --parallel=4 $EXCLUDES out/ $FTP_DIR; bye"
+          rm -f ~/.ssh/deploy_key
+      - name: 'sftp sleutel: controle'
+        run: |
+
+          set -euo pipefail
+          docker exec sshd sh -c 'cd /config/site/www && find . -type f | sort' | tee files.txt
+          grep -qx './index.html' files.txt && grep -qx './sub/b.html' files.txt || { echo "::error::sftp sleutel: nieuwe bestanden ontbreken"; exit 1; }
+          grep -qx './oud.html' files.txt && { echo "::error::sftp sleutel: oud bestand niet verwijderd"; exit 1; } || true
+          grep -qx './.htaccess' files.txt && grep -qx './.well-known/token' files.txt || { echo "::error::sftp sleutel: beschermde bestanden weg"; exit 1; }
+          echo "sftp sleutel: OK"
+      - name: sftp vangrail (/) moet falen
+        id: ftpguard
+        continue-on-error: true
+        env:
+          BUILD_OUTPUT: out
+          PROTOCOL: sftp
+          PROTECT: .htaccess,.well-known/,cgi-bin/,.user.ini,stats/,logs/
+          FTP_SERVER: 127.0.0.1
+          FTP_USERNAME: deploy
+          LFTP_PASSWORD: testpass123
+          FTP_DIR: /
+          FTP_PORT: '2222'
+          SSH_PRIVATE_KEY: ''
+          SSH_KNOWN_HOSTS: ''
+        run: |
+          set -euo pipefail
+          for v in FTP_SERVER FTP_USERNAME FTP_DIR; do
+            [ -n "${!v}" ] || { echo "::error::Secret $v ontbreekt"; exit 1; }
+          done
+          # Vangrail: mirror --delete op een lege of te korte map zou alles op de server weggooien.
+          case "$FTP_DIR" in
+            /*/) ;;
+            *) echo "::error::FTP_DIR moet absoluut zijn en op / eindigen (bv. /www/)"; exit 1 ;;
+          esac
+          [ "$FTP_DIR" != "/" ] || { echo "::error::FTP_DIR mag niet / zijn; wijs naar de webroot"; exit 1; }
+
+          SETTINGS="set net:max-retries 3; set net:timeout 30; set cmd:fail-exit yes;"
+          case "$PROTOCOL" in
+            sftp)
+              PORT="${FTP_PORT:-22}"
+              install -m 700 -d ~/.ssh
+              if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
+                printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+              else
+                echo "::warning::SSH_KNOWN_HOSTS niet gezet; host key wordt ongecontroleerd opgehaald."
+                ssh-keyscan -p "$PORT" -H "$FTP_SERVER" > ~/.ssh/known_hosts 2>/dev/null
+              fi
+              SSH_CMD="ssh -a -x -o StrictHostKeyChecking=yes"
+              if [ -n "${SSH_PRIVATE_KEY:-}" ]; then
+                printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+                SSH_CMD="$SSH_CMD -i $HOME/.ssh/deploy_key"
+                LFTP_PASSWORD="${LFTP_PASSWORD:-x}"
+              fi
+              SETTINGS="$SETTINGS set sftp:connect-program \"$SSH_CMD\";"
+              ;;
+            ftps)
+              PORT="${FTP_PORT:-21}"
+              SETTINGS="$SETTINGS set ftp:ssl-force true; set ftp:ssl-protect-data true; set ssl:verify-certificate yes;"
+              ;;
+            ftp)
+              PORT="${FTP_PORT:-21}"
+              echo "::warning::Onversleutelde FTP: wachtwoord en bestanden gaan leesbaar over het internet. Gebruik sftp of ftps waar het kan."
+              SETTINGS="$SETTINGS set ftp:ssl-allow false;"
+              ;;
+            *) echo "::error::PROTOCOL moet sftp, ftps of ftp zijn"; exit 1 ;;
+          esac
+
+          EXCLUDES=""
+          IFS=',' read -ra items <<< "$PROTECT"
+          for p in "${items[@]}"; do [ -n "$p" ] && EXCLUDES="$EXCLUDES --exclude-glob $p"; done
+
+          export LFTP_PASSWORD
+          lftp -p "$PORT" -u "$FTP_USERNAME" --env-password "$PROTOCOL://$FTP_SERVER" \
+            -e "$SETTINGS mirror --reverse --delete --verbose --parallel=4 $EXCLUDES out/ $FTP_DIR; bye"
+          rm -f ~/.ssh/deploy_key
+      - name: sftp vangrail gefaald
+        run: '[ "${{ steps.ftpguard.outcome }}" = failure ] && echo "sftp vangrail OK"'
