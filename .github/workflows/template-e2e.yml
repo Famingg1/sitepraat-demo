@@ -70,14 +70,11 @@ jobs:
           for v in SSH_PRIVATE_KEY SSH_HOST SSH_USER DEPLOY_PATH; do
             [ -n "${!v}" ] || { echo "::error::Secret $v ontbreekt"; exit 1; }
           done
-          # Vangrail: rsync --delete op een lege of te korte map zou de hele thuismap leegmaken.
+          # Vangrail: rsync --delete op een verkeerde map zou bv. de hele thuismap leegmaken.
           case "$DEPLOY_PATH" in
             /*/) ;;
             *) echo "::error::DEPLOY_PATH moet absoluut zijn en op / eindigen (bv. /home/user/public_html/)"; exit 1 ;;
           esac
-          if [ "$(echo "$DEPLOY_PATH" | tr -cd '/' | wc -c)" -lt 3 ]; then
-            echo "::error::DEPLOY_PATH '$DEPLOY_PATH' is te kort; wijs naar de webroot, niet naar / of de thuismap"; exit 1
-          fi
           PORT="${SSH_PORT:-22}"
 
           install -m 700 -d ~/.ssh
@@ -90,6 +87,15 @@ jobs:
             ssh-keyscan -p "$PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null
           fi
 
+          SSH_CMD="ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS"
+          # Op de server zelf: de doelmap moet al bestaan en mag niet / of de thuismap zijn.
+          REMOTE_HOME=$($SSH_CMD "$SSH_USER@$SSH_HOST" 'cd ~ && pwd -P')
+          REMOTE_TARGET=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd $(printf '%q' "$DEPLOY_PATH") && pwd -P") \
+            || { echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1; }
+          if [ "$REMOTE_TARGET" = "/" ] || [ "$REMOTE_TARGET" = "$REMOTE_HOME" ]; then
+            echo "::error::DEPLOY_PATH wijst naar / of de thuismap ($REMOTE_TARGET); wijs naar de webroot"; exit 1
+          fi
+
           EXCLUDES=()
           IFS=',' read -ra items <<< "$PROTECT"
           for p in "${items[@]}"; do [ -n "$p" ] && EXCLUDES+=("--exclude=/$p"); done
@@ -97,7 +103,7 @@ jobs:
           set +e
           # -rlpt in plaats van -a: geen eigenaar/groep zetten (kan niet op shared hosting).
           rsync -rlptz --checksum --delete --chmod=D755,F644 "${EXCLUDES[@]}" \
-            -e "ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS" \
+            -e "$SSH_CMD" \
             out/ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH"
           code=$?
           set -e
@@ -136,14 +142,11 @@ jobs:
           for v in SSH_PRIVATE_KEY SSH_HOST SSH_USER DEPLOY_PATH; do
             [ -n "${!v}" ] || { echo "::error::Secret $v ontbreekt"; exit 1; }
           done
-          # Vangrail: rsync --delete op een lege of te korte map zou de hele thuismap leegmaken.
+          # Vangrail: rsync --delete op een verkeerde map zou bv. de hele thuismap leegmaken.
           case "$DEPLOY_PATH" in
             /*/) ;;
             *) echo "::error::DEPLOY_PATH moet absoluut zijn en op / eindigen (bv. /home/user/public_html/)"; exit 1 ;;
           esac
-          if [ "$(echo "$DEPLOY_PATH" | tr -cd '/' | wc -c)" -lt 3 ]; then
-            echo "::error::DEPLOY_PATH '$DEPLOY_PATH' is te kort; wijs naar de webroot, niet naar / of de thuismap"; exit 1
-          fi
           PORT="${SSH_PORT:-22}"
 
           install -m 700 -d ~/.ssh
@@ -156,6 +159,15 @@ jobs:
             ssh-keyscan -p "$PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null
           fi
 
+          SSH_CMD="ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS"
+          # Op de server zelf: de doelmap moet al bestaan en mag niet / of de thuismap zijn.
+          REMOTE_HOME=$($SSH_CMD "$SSH_USER@$SSH_HOST" 'cd ~ && pwd -P')
+          REMOTE_TARGET=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd $(printf '%q' "$DEPLOY_PATH") && pwd -P") \
+            || { echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1; }
+          if [ "$REMOTE_TARGET" = "/" ] || [ "$REMOTE_TARGET" = "$REMOTE_HOME" ]; then
+            echo "::error::DEPLOY_PATH wijst naar / of de thuismap ($REMOTE_TARGET); wijs naar de webroot"; exit 1
+          fi
+
           EXCLUDES=()
           IFS=',' read -ra items <<< "$PROTECT"
           for p in "${items[@]}"; do [ -n "$p" ] && EXCLUDES+=("--exclude=/$p"); done
@@ -163,7 +175,7 @@ jobs:
           set +e
           # -rlpt in plaats van -a: geen eigenaar/groep zetten (kan niet op shared hosting).
           rsync -rlptz --checksum --delete --chmod=D755,F644 "${EXCLUDES[@]}" \
-            -e "ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS" \
+            -e "$SSH_CMD" \
             out/ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH"
           code=$?
           set -e
@@ -202,14 +214,11 @@ jobs:
           for v in SSH_PRIVATE_KEY SSH_HOST SSH_USER DEPLOY_PATH; do
             [ -n "${!v}" ] || { echo "::error::Secret $v ontbreekt"; exit 1; }
           done
-          # Vangrail: rsync --delete op een lege of te korte map zou de hele thuismap leegmaken.
+          # Vangrail: rsync --delete op een verkeerde map zou bv. de hele thuismap leegmaken.
           case "$DEPLOY_PATH" in
             /*/) ;;
             *) echo "::error::DEPLOY_PATH moet absoluut zijn en op / eindigen (bv. /home/user/public_html/)"; exit 1 ;;
           esac
-          if [ "$(echo "$DEPLOY_PATH" | tr -cd '/' | wc -c)" -lt 3 ]; then
-            echo "::error::DEPLOY_PATH '$DEPLOY_PATH' is te kort; wijs naar de webroot, niet naar / of de thuismap"; exit 1
-          fi
           PORT="${SSH_PORT:-22}"
 
           install -m 700 -d ~/.ssh
@@ -222,6 +231,15 @@ jobs:
             ssh-keyscan -p "$PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null
           fi
 
+          SSH_CMD="ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS"
+          # Op de server zelf: de doelmap moet al bestaan en mag niet / of de thuismap zijn.
+          REMOTE_HOME=$($SSH_CMD "$SSH_USER@$SSH_HOST" 'cd ~ && pwd -P')
+          REMOTE_TARGET=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd $(printf '%q' "$DEPLOY_PATH") && pwd -P") \
+            || { echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1; }
+          if [ "$REMOTE_TARGET" = "/" ] || [ "$REMOTE_TARGET" = "$REMOTE_HOME" ]; then
+            echo "::error::DEPLOY_PATH wijst naar / of de thuismap ($REMOTE_TARGET); wijs naar de webroot"; exit 1
+          fi
+
           EXCLUDES=()
           IFS=',' read -ra items <<< "$PROTECT"
           for p in "${items[@]}"; do [ -n "$p" ] && EXCLUDES+=("--exclude=/$p"); done
@@ -229,7 +247,7 @@ jobs:
           set +e
           # -rlpt in plaats van -a: geen eigenaar/groep zetten (kan niet op shared hosting).
           rsync -rlptz --checksum --delete --chmod=D755,F644 "${EXCLUDES[@]}" \
-            -e "ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS" \
+            -e "$SSH_CMD" \
             out/ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH"
           code=$?
           set -e
@@ -257,14 +275,11 @@ jobs:
           for v in SSH_PRIVATE_KEY SSH_HOST SSH_USER DEPLOY_PATH; do
             [ -n "${!v}" ] || { echo "::error::Secret $v ontbreekt"; exit 1; }
           done
-          # Vangrail: rsync --delete op een lege of te korte map zou de hele thuismap leegmaken.
+          # Vangrail: rsync --delete op een verkeerde map zou bv. de hele thuismap leegmaken.
           case "$DEPLOY_PATH" in
             /*/) ;;
             *) echo "::error::DEPLOY_PATH moet absoluut zijn en op / eindigen (bv. /home/user/public_html/)"; exit 1 ;;
           esac
-          if [ "$(echo "$DEPLOY_PATH" | tr -cd '/' | wc -c)" -lt 3 ]; then
-            echo "::error::DEPLOY_PATH '$DEPLOY_PATH' is te kort; wijs naar de webroot, niet naar / of de thuismap"; exit 1
-          fi
           PORT="${SSH_PORT:-22}"
 
           install -m 700 -d ~/.ssh
@@ -277,6 +292,15 @@ jobs:
             ssh-keyscan -p "$PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null
           fi
 
+          SSH_CMD="ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS"
+          # Op de server zelf: de doelmap moet al bestaan en mag niet / of de thuismap zijn.
+          REMOTE_HOME=$($SSH_CMD "$SSH_USER@$SSH_HOST" 'cd ~ && pwd -P')
+          REMOTE_TARGET=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd $(printf '%q' "$DEPLOY_PATH") && pwd -P") \
+            || { echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1; }
+          if [ "$REMOTE_TARGET" = "/" ] || [ "$REMOTE_TARGET" = "$REMOTE_HOME" ]; then
+            echo "::error::DEPLOY_PATH wijst naar / of de thuismap ($REMOTE_TARGET); wijs naar de webroot"; exit 1
+          fi
+
           EXCLUDES=()
           IFS=',' read -ra items <<< "$PROTECT"
           for p in "${items[@]}"; do [ -n "$p" ] && EXCLUDES+=("--exclude=/$p"); done
@@ -284,7 +308,7 @@ jobs:
           set +e
           # -rlpt in plaats van -a: geen eigenaar/groep zetten (kan niet op shared hosting).
           rsync -rlptz --checksum --delete --chmod=D755,F644 "${EXCLUDES[@]}" \
-            -e "ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS" \
+            -e "$SSH_CMD" \
             out/ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH"
           code=$?
           set -e
@@ -312,14 +336,11 @@ jobs:
           for v in SSH_PRIVATE_KEY SSH_HOST SSH_USER DEPLOY_PATH; do
             [ -n "${!v}" ] || { echo "::error::Secret $v ontbreekt"; exit 1; }
           done
-          # Vangrail: rsync --delete op een lege of te korte map zou de hele thuismap leegmaken.
+          # Vangrail: rsync --delete op een verkeerde map zou bv. de hele thuismap leegmaken.
           case "$DEPLOY_PATH" in
             /*/) ;;
             *) echo "::error::DEPLOY_PATH moet absoluut zijn en op / eindigen (bv. /home/user/public_html/)"; exit 1 ;;
           esac
-          if [ "$(echo "$DEPLOY_PATH" | tr -cd '/' | wc -c)" -lt 3 ]; then
-            echo "::error::DEPLOY_PATH '$DEPLOY_PATH' is te kort; wijs naar de webroot, niet naar / of de thuismap"; exit 1
-          fi
           PORT="${SSH_PORT:-22}"
 
           install -m 700 -d ~/.ssh
@@ -332,6 +353,15 @@ jobs:
             ssh-keyscan -p "$PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null
           fi
 
+          SSH_CMD="ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS"
+          # Op de server zelf: de doelmap moet al bestaan en mag niet / of de thuismap zijn.
+          REMOTE_HOME=$($SSH_CMD "$SSH_USER@$SSH_HOST" 'cd ~ && pwd -P')
+          REMOTE_TARGET=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd $(printf '%q' "$DEPLOY_PATH") && pwd -P") \
+            || { echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1; }
+          if [ "$REMOTE_TARGET" = "/" ] || [ "$REMOTE_TARGET" = "$REMOTE_HOME" ]; then
+            echo "::error::DEPLOY_PATH wijst naar / of de thuismap ($REMOTE_TARGET); wijs naar de webroot"; exit 1
+          fi
+
           EXCLUDES=()
           IFS=',' read -ra items <<< "$PROTECT"
           for p in "${items[@]}"; do [ -n "$p" ] && EXCLUDES+=("--exclude=/$p"); done
@@ -339,7 +369,190 @@ jobs:
           set +e
           # -rlpt in plaats van -a: geen eigenaar/groep zetten (kan niet op shared hosting).
           rsync -rlptz --checksum --delete --chmod=D755,F644 "${EXCLUDES[@]}" \
-            -e "ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS" \
+            -e "$SSH_CMD" \
+            out/ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH"
+          code=$?
+          set -e
+          rm -f ~/.ssh/deploy_key
+          if [ "$code" -eq 23 ] && [ "$ALLOW_RSYNC_PARTIAL" = "true" ]; then
+            echo "::warning::rsync exitcode 23 (host bewerkt bestanden na upload); niet fataal."
+          elif [ "$code" -ne 0 ]; then
+            echo "::error::rsync faalde met exitcode $code"; exit "$code"
+          fi
+      - name: 'rsync: vangrail 4 (/) moet falen'
+        id: guard3
+        continue-on-error: true
+        env:
+          BUILD_OUTPUT: out
+          SSH_HOST: 127.0.0.1
+          SSH_USER: deploy
+          SSH_PORT: '2222'
+          SSH_KNOWN_HOSTS: ''
+          DEPLOY_PATH: /
+          ALLOW_RSYNC_PARTIAL: 'false'
+          PROTECT: .htaccess,.well-known/,cgi-bin/,.user.ini,stats/,logs/
+          SSH_EXTRA_OPTS: ''
+        run: |
+          set -euo pipefail
+          for v in SSH_PRIVATE_KEY SSH_HOST SSH_USER DEPLOY_PATH; do
+            [ -n "${!v}" ] || { echo "::error::Secret $v ontbreekt"; exit 1; }
+          done
+          # Vangrail: rsync --delete op een verkeerde map zou bv. de hele thuismap leegmaken.
+          case "$DEPLOY_PATH" in
+            /*/) ;;
+            *) echo "::error::DEPLOY_PATH moet absoluut zijn en op / eindigen (bv. /home/user/public_html/)"; exit 1 ;;
+          esac
+          PORT="${SSH_PORT:-22}"
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            echo "::warning::SSH_KNOWN_HOSTS niet gezet; host key wordt ongecontroleerd opgehaald."
+            ssh-keyscan -p "$PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+
+          SSH_CMD="ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS"
+          # Op de server zelf: de doelmap moet al bestaan en mag niet / of de thuismap zijn.
+          REMOTE_HOME=$($SSH_CMD "$SSH_USER@$SSH_HOST" 'cd ~ && pwd -P')
+          REMOTE_TARGET=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd $(printf '%q' "$DEPLOY_PATH") && pwd -P") \
+            || { echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1; }
+          if [ "$REMOTE_TARGET" = "/" ] || [ "$REMOTE_TARGET" = "$REMOTE_HOME" ]; then
+            echo "::error::DEPLOY_PATH wijst naar / of de thuismap ($REMOTE_TARGET); wijs naar de webroot"; exit 1
+          fi
+
+          EXCLUDES=()
+          IFS=',' read -ra items <<< "$PROTECT"
+          for p in "${items[@]}"; do [ -n "$p" ] && EXCLUDES+=("--exclude=/$p"); done
+
+          set +e
+          # -rlpt in plaats van -a: geen eigenaar/groep zetten (kan niet op shared hosting).
+          rsync -rlptz --checksum --delete --chmod=D755,F644 "${EXCLUDES[@]}" \
+            -e "$SSH_CMD" \
+            out/ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH"
+          code=$?
+          set -e
+          rm -f ~/.ssh/deploy_key
+          if [ "$code" -eq 23 ] && [ "$ALLOW_RSYNC_PARTIAL" = "true" ]; then
+            echo "::warning::rsync exitcode 23 (host bewerkt bestanden na upload); niet fataal."
+          elif [ "$code" -ne 0 ]; then
+            echo "::error::rsync faalde met exitcode $code"; exit "$code"
+          fi
+      - name: 'rsync: vangrail 5 (/config/bestaat/niet/) moet falen'
+        id: guard4
+        continue-on-error: true
+        env:
+          BUILD_OUTPUT: out
+          SSH_HOST: 127.0.0.1
+          SSH_USER: deploy
+          SSH_PORT: '2222'
+          SSH_KNOWN_HOSTS: ''
+          DEPLOY_PATH: /config/bestaat/niet/
+          ALLOW_RSYNC_PARTIAL: 'false'
+          PROTECT: .htaccess,.well-known/,cgi-bin/,.user.ini,stats/,logs/
+          SSH_EXTRA_OPTS: ''
+        run: |
+          set -euo pipefail
+          for v in SSH_PRIVATE_KEY SSH_HOST SSH_USER DEPLOY_PATH; do
+            [ -n "${!v}" ] || { echo "::error::Secret $v ontbreekt"; exit 1; }
+          done
+          # Vangrail: rsync --delete op een verkeerde map zou bv. de hele thuismap leegmaken.
+          case "$DEPLOY_PATH" in
+            /*/) ;;
+            *) echo "::error::DEPLOY_PATH moet absoluut zijn en op / eindigen (bv. /home/user/public_html/)"; exit 1 ;;
+          esac
+          PORT="${SSH_PORT:-22}"
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            echo "::warning::SSH_KNOWN_HOSTS niet gezet; host key wordt ongecontroleerd opgehaald."
+            ssh-keyscan -p "$PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+
+          SSH_CMD="ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS"
+          # Op de server zelf: de doelmap moet al bestaan en mag niet / of de thuismap zijn.
+          REMOTE_HOME=$($SSH_CMD "$SSH_USER@$SSH_HOST" 'cd ~ && pwd -P')
+          REMOTE_TARGET=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd $(printf '%q' "$DEPLOY_PATH") && pwd -P") \
+            || { echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1; }
+          if [ "$REMOTE_TARGET" = "/" ] || [ "$REMOTE_TARGET" = "$REMOTE_HOME" ]; then
+            echo "::error::DEPLOY_PATH wijst naar / of de thuismap ($REMOTE_TARGET); wijs naar de webroot"; exit 1
+          fi
+
+          EXCLUDES=()
+          IFS=',' read -ra items <<< "$PROTECT"
+          for p in "${items[@]}"; do [ -n "$p" ] && EXCLUDES+=("--exclude=/$p"); done
+
+          set +e
+          # -rlpt in plaats van -a: geen eigenaar/groep zetten (kan niet op shared hosting).
+          rsync -rlptz --checksum --delete --chmod=D755,F644 "${EXCLUDES[@]}" \
+            -e "$SSH_CMD" \
+            out/ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH"
+          code=$?
+          set -e
+          rm -f ~/.ssh/deploy_key
+          if [ "$code" -eq 23 ] && [ "$ALLOW_RSYNC_PARTIAL" = "true" ]; then
+            echo "::warning::rsync exitcode 23 (host bewerkt bestanden na upload); niet fataal."
+          elif [ "$code" -ne 0 ]; then
+            echo "::error::rsync faalde met exitcode $code"; exit "$code"
+          fi
+      - name: 'rsync: vangrail 6 (/config/site/../) moet falen'
+        id: guard5
+        continue-on-error: true
+        env:
+          BUILD_OUTPUT: out
+          SSH_HOST: 127.0.0.1
+          SSH_USER: deploy
+          SSH_PORT: '2222'
+          SSH_KNOWN_HOSTS: ''
+          DEPLOY_PATH: /config/site/../
+          ALLOW_RSYNC_PARTIAL: 'false'
+          PROTECT: .htaccess,.well-known/,cgi-bin/,.user.ini,stats/,logs/
+          SSH_EXTRA_OPTS: ''
+        run: |
+          set -euo pipefail
+          for v in SSH_PRIVATE_KEY SSH_HOST SSH_USER DEPLOY_PATH; do
+            [ -n "${!v}" ] || { echo "::error::Secret $v ontbreekt"; exit 1; }
+          done
+          # Vangrail: rsync --delete op een verkeerde map zou bv. de hele thuismap leegmaken.
+          case "$DEPLOY_PATH" in
+            /*/) ;;
+            *) echo "::error::DEPLOY_PATH moet absoluut zijn en op / eindigen (bv. /home/user/public_html/)"; exit 1 ;;
+          esac
+          PORT="${SSH_PORT:-22}"
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            echo "::warning::SSH_KNOWN_HOSTS niet gezet; host key wordt ongecontroleerd opgehaald."
+            ssh-keyscan -p "$PORT" -H "$SSH_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+
+          SSH_CMD="ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS"
+          # Op de server zelf: de doelmap moet al bestaan en mag niet / of de thuismap zijn.
+          REMOTE_HOME=$($SSH_CMD "$SSH_USER@$SSH_HOST" 'cd ~ && pwd -P')
+          REMOTE_TARGET=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd $(printf '%q' "$DEPLOY_PATH") && pwd -P") \
+            || { echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1; }
+          if [ "$REMOTE_TARGET" = "/" ] || [ "$REMOTE_TARGET" = "$REMOTE_HOME" ]; then
+            echo "::error::DEPLOY_PATH wijst naar / of de thuismap ($REMOTE_TARGET); wijs naar de webroot"; exit 1
+          fi
+
+          EXCLUDES=()
+          IFS=',' read -ra items <<< "$PROTECT"
+          for p in "${items[@]}"; do [ -n "$p" ] && EXCLUDES+=("--exclude=/$p"); done
+
+          set +e
+          # -rlpt in plaats van -a: geen eigenaar/groep zetten (kan niet op shared hosting).
+          rsync -rlptz --checksum --delete --chmod=D755,F644 "${EXCLUDES[@]}" \
+            -e "$SSH_CMD" \
             out/ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH"
           code=$?
           set -e
@@ -350,7 +563,7 @@ jobs:
             echo "::error::rsync faalde met exitcode $code"; exit "$code"
           fi
       - name: vangrails moeten gefaald hebben
-        run: '[ "${{ steps.guard0.outcome }}" = failure ] && [ "${{ steps.guard1.outcome }}" = failure ] && [ "${{ steps.guard2.outcome }}" = failure ] && echo "vangrails OK"'
+        run: '[ "${{ steps.guard0.outcome }}" = failure ] && [ "${{ steps.guard1.outcome }}" = failure ] && [ "${{ steps.guard2.outcome }}" = failure ] && [ "${{ steps.guard3.outcome }}" = failure ] && [ "${{ steps.guard4.outcome }}" = failure ] && [ "${{ steps.guard5.outcome }}" = failure ] && echo "vangrails OK"'
       - name: na vangrails staat alles er nog
         run: |
 
