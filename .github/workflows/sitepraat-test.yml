@@ -1,0 +1,23 @@
+name: Sitepraat testdeploy
+
+# Bouwt de site bij een push naar sitepraat-test of main. Er is geen echte host:
+# deze demo laat zien dat Sitepraat de CI volgt na live zetten en terugdraaien.
+on:
+  push:
+    branches: [sitepraat-test, main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npm run build

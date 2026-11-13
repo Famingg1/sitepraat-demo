@@ -1,0 +1,12 @@
+{
+  "naam": "Bloemist Roos",
+  "slogan": "Verse bloemen uit de Jordaan, met liefde gebonden",
+  "adres": "Westerstraat 12, 1015 MK Amsterdam",
+  "telefoon": "020 123 45 67",
+  "openingstijden": [
+    { "dag": "Maandag", "tijd": "Gesloten" },
+    { "dag": "Dinsdag t/m vrijdag", "tijd": "9:00 tot 18:00" },
+    { "dag": "Zaterdag", "tijd": "8:30 tot 17:00" },
+    { "dag": "Zondag", "tijd": "11:00 tot 16:00" }
+  ]
+}

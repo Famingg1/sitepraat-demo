@@ -1,0 +1,15 @@
+{
+  "name": "Bloemist Roos (demo)",
+  "build": { "install": "npm ci", "command": "npm run build", "output": "dist", "timeoutSeconds": 120 },
+  "allow": ["content/*.json", "src/template.html", "src/style.css"],
+  "deny": ["dist/**"],
+  "legal": ["content/voorwaarden.json"],
+  "labels": {
+    "content/site.json": "Gegevens en openingstijden",
+    "content/prijzen.json": "Prijzen",
+    "content/voorwaarden.json": "Algemene voorwaarden",
+    "src/template.html": "Opmaak van elke pagina",
+    "src/style.css": "Kleuren en stijl"
+  },
+  "limits": { "maxFiles": 8, "maxChangedLines": 300 }
+}
