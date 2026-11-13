@@ -89,9 +89,17 @@ jobs:
 
           SSH_CMD="ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS"
           # Op de server zelf: de doelmap moet al bestaan en mag niet / of de thuismap zijn.
-          REMOTE_HOME=$($SSH_CMD "$SSH_USER@$SSH_HOST" 'cd ~ && pwd -P')
-          REMOTE_TARGET=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd $(printf '%q' "$DEPLOY_PATH") && pwd -P") \
-            || { echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1; }
+          set +e
+          CHECK=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd ~ && pwd -P && cd $(printf '%q' "$DEPLOY_PATH") && pwd -P")
+          rc=$?
+          set -e
+          if [ "$rc" -eq 255 ]; then
+            echo "::error::SSH-verbinding met $SSH_HOST:$PORT mislukt (sleutel, gebruiker, poort of IP-beperking bij de host)"; exit 1
+          elif [ "$rc" -ne 0 ]; then
+            echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1
+          fi
+          REMOTE_HOME=$(sed -n 1p <<< "$CHECK")
+          REMOTE_TARGET=$(sed -n 2p <<< "$CHECK")
           if [ "$REMOTE_TARGET" = "/" ] || [ "$REMOTE_TARGET" = "$REMOTE_HOME" ]; then
             echo "::error::DEPLOY_PATH wijst naar / of de thuismap ($REMOTE_TARGET); wijs naar de webroot"; exit 1
           fi
@@ -161,9 +169,17 @@ jobs:
 
           SSH_CMD="ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS"
           # Op de server zelf: de doelmap moet al bestaan en mag niet / of de thuismap zijn.
-          REMOTE_HOME=$($SSH_CMD "$SSH_USER@$SSH_HOST" 'cd ~ && pwd -P')
-          REMOTE_TARGET=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd $(printf '%q' "$DEPLOY_PATH") && pwd -P") \
-            || { echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1; }
+          set +e
+          CHECK=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd ~ && pwd -P && cd $(printf '%q' "$DEPLOY_PATH") && pwd -P")
+          rc=$?
+          set -e
+          if [ "$rc" -eq 255 ]; then
+            echo "::error::SSH-verbinding met $SSH_HOST:$PORT mislukt (sleutel, gebruiker, poort of IP-beperking bij de host)"; exit 1
+          elif [ "$rc" -ne 0 ]; then
+            echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1
+          fi
+          REMOTE_HOME=$(sed -n 1p <<< "$CHECK")
+          REMOTE_TARGET=$(sed -n 2p <<< "$CHECK")
           if [ "$REMOTE_TARGET" = "/" ] || [ "$REMOTE_TARGET" = "$REMOTE_HOME" ]; then
             echo "::error::DEPLOY_PATH wijst naar / of de thuismap ($REMOTE_TARGET); wijs naar de webroot"; exit 1
           fi
@@ -204,7 +220,7 @@ jobs:
           SSH_HOST: 127.0.0.1
           SSH_USER: deploy
           SSH_PORT: '2222'
-          SSH_KNOWN_HOSTS: ''
+          SSH_KNOWN_HOSTS: ${{ env.PINNED }}
           DEPLOY_PATH: /config/
           ALLOW_RSYNC_PARTIAL: 'false'
           PROTECT: .htaccess,.well-known/,cgi-bin/,.user.ini,stats/,logs/
@@ -233,9 +249,17 @@ jobs:
 
           SSH_CMD="ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS"
           # Op de server zelf: de doelmap moet al bestaan en mag niet / of de thuismap zijn.
-          REMOTE_HOME=$($SSH_CMD "$SSH_USER@$SSH_HOST" 'cd ~ && pwd -P')
-          REMOTE_TARGET=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd $(printf '%q' "$DEPLOY_PATH") && pwd -P") \
-            || { echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1; }
+          set +e
+          CHECK=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd ~ && pwd -P && cd $(printf '%q' "$DEPLOY_PATH") && pwd -P")
+          rc=$?
+          set -e
+          if [ "$rc" -eq 255 ]; then
+            echo "::error::SSH-verbinding met $SSH_HOST:$PORT mislukt (sleutel, gebruiker, poort of IP-beperking bij de host)"; exit 1
+          elif [ "$rc" -ne 0 ]; then
+            echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1
+          fi
+          REMOTE_HOME=$(sed -n 1p <<< "$CHECK")
+          REMOTE_TARGET=$(sed -n 2p <<< "$CHECK")
           if [ "$REMOTE_TARGET" = "/" ] || [ "$REMOTE_TARGET" = "$REMOTE_HOME" ]; then
             echo "::error::DEPLOY_PATH wijst naar / of de thuismap ($REMOTE_TARGET); wijs naar de webroot"; exit 1
           fi
@@ -265,7 +289,7 @@ jobs:
           SSH_HOST: 127.0.0.1
           SSH_USER: deploy
           SSH_PORT: '2222'
-          SSH_KNOWN_HOSTS: ''
+          SSH_KNOWN_HOSTS: ${{ env.PINNED }}
           DEPLOY_PATH: ''
           ALLOW_RSYNC_PARTIAL: 'false'
           PROTECT: .htaccess,.well-known/,cgi-bin/,.user.ini,stats/,logs/
@@ -294,9 +318,17 @@ jobs:
 
           SSH_CMD="ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS"
           # Op de server zelf: de doelmap moet al bestaan en mag niet / of de thuismap zijn.
-          REMOTE_HOME=$($SSH_CMD "$SSH_USER@$SSH_HOST" 'cd ~ && pwd -P')
-          REMOTE_TARGET=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd $(printf '%q' "$DEPLOY_PATH") && pwd -P") \
-            || { echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1; }
+          set +e
+          CHECK=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd ~ && pwd -P && cd $(printf '%q' "$DEPLOY_PATH") && pwd -P")
+          rc=$?
+          set -e
+          if [ "$rc" -eq 255 ]; then
+            echo "::error::SSH-verbinding met $SSH_HOST:$PORT mislukt (sleutel, gebruiker, poort of IP-beperking bij de host)"; exit 1
+          elif [ "$rc" -ne 0 ]; then
+            echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1
+          fi
+          REMOTE_HOME=$(sed -n 1p <<< "$CHECK")
+          REMOTE_TARGET=$(sed -n 2p <<< "$CHECK")
           if [ "$REMOTE_TARGET" = "/" ] || [ "$REMOTE_TARGET" = "$REMOTE_HOME" ]; then
             echo "::error::DEPLOY_PATH wijst naar / of de thuismap ($REMOTE_TARGET); wijs naar de webroot"; exit 1
           fi
@@ -326,7 +358,7 @@ jobs:
           SSH_HOST: 127.0.0.1
           SSH_USER: deploy
           SSH_PORT: '2222'
-          SSH_KNOWN_HOSTS: ''
+          SSH_KNOWN_HOSTS: ${{ env.PINNED }}
           DEPLOY_PATH: config/site/www
           ALLOW_RSYNC_PARTIAL: 'false'
           PROTECT: .htaccess,.well-known/,cgi-bin/,.user.ini,stats/,logs/
@@ -355,9 +387,17 @@ jobs:
 
           SSH_CMD="ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS"
           # Op de server zelf: de doelmap moet al bestaan en mag niet / of de thuismap zijn.
-          REMOTE_HOME=$($SSH_CMD "$SSH_USER@$SSH_HOST" 'cd ~ && pwd -P')
-          REMOTE_TARGET=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd $(printf '%q' "$DEPLOY_PATH") && pwd -P") \
-            || { echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1; }
+          set +e
+          CHECK=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd ~ && pwd -P && cd $(printf '%q' "$DEPLOY_PATH") && pwd -P")
+          rc=$?
+          set -e
+          if [ "$rc" -eq 255 ]; then
+            echo "::error::SSH-verbinding met $SSH_HOST:$PORT mislukt (sleutel, gebruiker, poort of IP-beperking bij de host)"; exit 1
+          elif [ "$rc" -ne 0 ]; then
+            echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1
+          fi
+          REMOTE_HOME=$(sed -n 1p <<< "$CHECK")
+          REMOTE_TARGET=$(sed -n 2p <<< "$CHECK")
           if [ "$REMOTE_TARGET" = "/" ] || [ "$REMOTE_TARGET" = "$REMOTE_HOME" ]; then
             echo "::error::DEPLOY_PATH wijst naar / of de thuismap ($REMOTE_TARGET); wijs naar de webroot"; exit 1
           fi
@@ -387,7 +427,7 @@ jobs:
           SSH_HOST: 127.0.0.1
           SSH_USER: deploy
           SSH_PORT: '2222'
-          SSH_KNOWN_HOSTS: ''
+          SSH_KNOWN_HOSTS: ${{ env.PINNED }}
           DEPLOY_PATH: /
           ALLOW_RSYNC_PARTIAL: 'false'
           PROTECT: .htaccess,.well-known/,cgi-bin/,.user.ini,stats/,logs/
@@ -416,9 +456,17 @@ jobs:
 
           SSH_CMD="ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS"
           # Op de server zelf: de doelmap moet al bestaan en mag niet / of de thuismap zijn.
-          REMOTE_HOME=$($SSH_CMD "$SSH_USER@$SSH_HOST" 'cd ~ && pwd -P')
-          REMOTE_TARGET=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd $(printf '%q' "$DEPLOY_PATH") && pwd -P") \
-            || { echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1; }
+          set +e
+          CHECK=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd ~ && pwd -P && cd $(printf '%q' "$DEPLOY_PATH") && pwd -P")
+          rc=$?
+          set -e
+          if [ "$rc" -eq 255 ]; then
+            echo "::error::SSH-verbinding met $SSH_HOST:$PORT mislukt (sleutel, gebruiker, poort of IP-beperking bij de host)"; exit 1
+          elif [ "$rc" -ne 0 ]; then
+            echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1
+          fi
+          REMOTE_HOME=$(sed -n 1p <<< "$CHECK")
+          REMOTE_TARGET=$(sed -n 2p <<< "$CHECK")
           if [ "$REMOTE_TARGET" = "/" ] || [ "$REMOTE_TARGET" = "$REMOTE_HOME" ]; then
             echo "::error::DEPLOY_PATH wijst naar / of de thuismap ($REMOTE_TARGET); wijs naar de webroot"; exit 1
           fi
@@ -448,7 +496,7 @@ jobs:
           SSH_HOST: 127.0.0.1
           SSH_USER: deploy
           SSH_PORT: '2222'
-          SSH_KNOWN_HOSTS: ''
+          SSH_KNOWN_HOSTS: ${{ env.PINNED }}
           DEPLOY_PATH: /config/bestaat/niet/
           ALLOW_RSYNC_PARTIAL: 'false'
           PROTECT: .htaccess,.well-known/,cgi-bin/,.user.ini,stats/,logs/
@@ -477,9 +525,17 @@ jobs:
 
           SSH_CMD="ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS"
           # Op de server zelf: de doelmap moet al bestaan en mag niet / of de thuismap zijn.
-          REMOTE_HOME=$($SSH_CMD "$SSH_USER@$SSH_HOST" 'cd ~ && pwd -P')
-          REMOTE_TARGET=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd $(printf '%q' "$DEPLOY_PATH") && pwd -P") \
-            || { echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1; }
+          set +e
+          CHECK=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd ~ && pwd -P && cd $(printf '%q' "$DEPLOY_PATH") && pwd -P")
+          rc=$?
+          set -e
+          if [ "$rc" -eq 255 ]; then
+            echo "::error::SSH-verbinding met $SSH_HOST:$PORT mislukt (sleutel, gebruiker, poort of IP-beperking bij de host)"; exit 1
+          elif [ "$rc" -ne 0 ]; then
+            echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1
+          fi
+          REMOTE_HOME=$(sed -n 1p <<< "$CHECK")
+          REMOTE_TARGET=$(sed -n 2p <<< "$CHECK")
           if [ "$REMOTE_TARGET" = "/" ] || [ "$REMOTE_TARGET" = "$REMOTE_HOME" ]; then
             echo "::error::DEPLOY_PATH wijst naar / of de thuismap ($REMOTE_TARGET); wijs naar de webroot"; exit 1
           fi
@@ -509,7 +565,7 @@ jobs:
           SSH_HOST: 127.0.0.1
           SSH_USER: deploy
           SSH_PORT: '2222'
-          SSH_KNOWN_HOSTS: ''
+          SSH_KNOWN_HOSTS: ${{ env.PINNED }}
           DEPLOY_PATH: /config/site/../
           ALLOW_RSYNC_PARTIAL: 'false'
           PROTECT: .htaccess,.well-known/,cgi-bin/,.user.ini,stats/,logs/
@@ -538,9 +594,17 @@ jobs:
 
           SSH_CMD="ssh -p $PORT -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes $SSH_EXTRA_OPTS"
           # Op de server zelf: de doelmap moet al bestaan en mag niet / of de thuismap zijn.
-          REMOTE_HOME=$($SSH_CMD "$SSH_USER@$SSH_HOST" 'cd ~ && pwd -P')
-          REMOTE_TARGET=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd $(printf '%q' "$DEPLOY_PATH") && pwd -P") \
-            || { echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1; }
+          set +e
+          CHECK=$($SSH_CMD "$SSH_USER@$SSH_HOST" "cd ~ && pwd -P && cd $(printf '%q' "$DEPLOY_PATH") && pwd -P")
+          rc=$?
+          set -e
+          if [ "$rc" -eq 255 ]; then
+            echo "::error::SSH-verbinding met $SSH_HOST:$PORT mislukt (sleutel, gebruiker, poort of IP-beperking bij de host)"; exit 1
+          elif [ "$rc" -ne 0 ]; then
+            echo "::error::DEPLOY_PATH '$DEPLOY_PATH' bestaat niet op de server"; exit 1
+          fi
+          REMOTE_HOME=$(sed -n 1p <<< "$CHECK")
+          REMOTE_TARGET=$(sed -n 2p <<< "$CHECK")
           if [ "$REMOTE_TARGET" = "/" ] || [ "$REMOTE_TARGET" = "$REMOTE_HOME" ]; then
             echo "::error::DEPLOY_PATH wijst naar / of de thuismap ($REMOTE_TARGET); wijs naar de webroot"; exit 1
           fi
